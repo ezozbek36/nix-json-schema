@@ -8,14 +8,14 @@
     then throw "$ref '${ref}' is external — only internal refs are supported"
     else lib.attrsets.getAttrFromPath path rootSchema;
 
-  mapPrimitveType = type:
+  mapPrimitiveType = type:
     if type == "string"
     then lib.types.str
-    else if type == "integer"
+    else if type == "integer" || type == "int"
     then lib.types.int
-    else if type == "number"
+    else if type == "number" || type == "float"
     then lib.types.number
-    else if type == "boolean"
+    else if type == "boolean" || type == "bool"
     then lib.types.bool
     else abort "No conversion for type '${type}'";
 
@@ -24,7 +24,7 @@
     then builtins.mapAttrs (key: value: mapObjectDefinition rootSchema value) jsonSchema.properties
     else if jsonSchema.type == "array"
     then
-      lib.mkOptions {
+      lib.mkOption {
         type = lib.types.listOf (
           if jsonSchema ? items
           then (mapObjectDefinition rootSchema jsonSchema.items).type
@@ -34,10 +34,10 @@
     else if lib.elem jsonSchema.type ["string" "integer" "number" "boolean"]
     then
       lib.mkOption {
-        type = mapPrimitveType jsonSchema.type;
+        type = mapPrimitiveType jsonSchema.type;
         description = jsonSchema.description or "";
       }
-    else throw "unknow type condition for: ${lib.typeOf jsonSchema}";
+    else throw "unknown type condition for: ${lib.typeOf jsonSchema}";
 
   mapObjectDefinition = rootSchema: jsonSchema:
     if jsonSchema ? "$ref"
@@ -51,11 +51,13 @@
     then
       lib.mkOption {
         type = let
-          variants = map (item: item.type) (map (mapObjectDefinition rootSchema) jsonSchema.oneOf);
+          isNotNull = item: !((item ? type) && item.type == "null");
+          actualVariants = builtins.filter isNotNull jsonSchema.oneOf;
+          variants = map (item: (mapObjectDefinition rootSchema item).type) actualVariants;
           isNullable = lib.lists.any (item: (item ? type) && item.type == "null") jsonSchema.oneOf;
           combined =
-            if isNullable && 2 == lib.lists.length variants
-            then lib.head variants # TODO: remove actual null definition
+            if 1 == lib.lists.length variants
+            then lib.head variants
             else lib.types.oneOf variants;
         in
           if isNullable
@@ -74,7 +76,7 @@
       # TODO: research value assertion
       lib.mkOption {
         example = jsonSchema.const;
-        type = lib.typeOf jsonSchema.const;
+        type = mapPrimitiveType (lib.typeOf jsonSchema.const);
       }
     else throw "Unknown schema shape: ${lib.typeOf jsonSchema}";
 
