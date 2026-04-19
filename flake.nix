@@ -31,7 +31,7 @@
           devShells.default = pkgs.mkShellNoCC {
             nativeBuildInputs = with pkgs; [
               nixd
-              alejandra
+              nixfmt
             ];
           };
         };
