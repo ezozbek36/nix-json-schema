@@ -1,89 +1,101 @@
-{lib, ...}: let
-  resolveRef = rootSchema: ref: let
-    isInternal = lib.hasPrefix "#" ref;
-    pointer = lib.strings.removePrefix "#/" ref;
-    path = lib.strings.splitString "/" pointer;
-  in
-    if !isInternal
-    then throw "$ref '${ref}' is external — only internal refs are supported"
-    else lib.attrsets.getAttrFromPath path rootSchema;
+{ lib, ... }:
+let
+  resolveRef =
+    rootSchema: ref:
+    let
+      isInternal = lib.hasPrefix "#" ref;
+      pointer = lib.strings.removePrefix "#/" ref;
+      path = lib.strings.splitString "/" pointer;
+    in
+    if !isInternal then
+      throw "$ref '${ref}' is external — only internal refs are supported"
+    else
+      lib.attrsets.getAttrFromPath path rootSchema;
 
-  mapPrimitiveType = type:
-    if type == "string"
-    then lib.types.str
-    else if type == "integer" || type == "int"
-    then lib.types.int
-    else if type == "number" || type == "float"
-    then lib.types.number
-    else if type == "boolean" || type == "bool"
-    then lib.types.bool
-    else abort "No conversion for type '${type}'";
+  mapPrimitiveType =
+    type:
+    if type == "string" then
+      lib.types.str
+    else if type == "integer" || type == "int" then
+      lib.types.int
+    else if type == "number" || type == "float" then
+      lib.types.number
+    else if type == "boolean" || type == "bool" then
+      lib.types.bool
+    else
+      abort "No conversion for type '${type}'";
 
-  mapByType = rootSchema: jsonSchema:
-    if jsonSchema.type == "object"
-    then builtins.mapAttrs (key: value: mapObjectDefinition rootSchema value) jsonSchema.properties
-    else if jsonSchema.type == "array"
-    then
+  mapByType =
+    rootSchema: jsonSchema:
+    if jsonSchema.type == "object" then
+      builtins.mapAttrs (key: value: mapObjectDefinition rootSchema value) jsonSchema.properties
+    else if jsonSchema.type == "array" then
       lib.mkOption {
         type = lib.types.listOf (
-          if jsonSchema ? items
-          then (mapObjectDefinition rootSchema jsonSchema.items).type
-          else lib.types.anything
+          if jsonSchema ? items then
+            (mapObjectDefinition rootSchema jsonSchema.items).type
+          else
+            lib.types.anything
         );
       }
-    else if lib.elem jsonSchema.type ["string" "integer" "number" "boolean"]
+    else if
+      lib.elem jsonSchema.type [
+        "string"
+        "integer"
+        "number"
+        "boolean"
+      ]
     then
       lib.mkOption {
         type = mapPrimitiveType jsonSchema.type;
         description = jsonSchema.description or "";
       }
-    else throw "unknown type condition for: ${lib.typeOf jsonSchema}";
+    else
+      throw "unknown type condition for: ${lib.typeOf jsonSchema}";
 
-  mapObjectDefinition = rootSchema: jsonSchema:
-    if jsonSchema ? "$ref"
-    then let
-      resolved = resolveRef rootSchema jsonSchema."$ref";
-    in
+  mapObjectDefinition =
+    rootSchema: jsonSchema:
+    if jsonSchema ? "$ref" then
+      let
+        resolved = resolveRef rootSchema jsonSchema."$ref";
+      in
       mapObjectDefinition rootSchema resolved
-    else if jsonSchema ? "$defs"
-    then builtins.mapAttrs (key: value: mapObjectDefinition rootSchema value) jsonSchema."$defs"
-    else if jsonSchema ? oneOf
-    then
+    else if jsonSchema ? "$defs" then
+      builtins.mapAttrs (key: value: mapObjectDefinition rootSchema value) jsonSchema."$defs"
+    else if jsonSchema ? oneOf then
       lib.mkOption {
-        type = let
-          isNotNull = item: !((item ? type) && item.type == "null");
-          actualVariants = builtins.filter isNotNull jsonSchema.oneOf;
-          variants = map (item: (mapObjectDefinition rootSchema item).type) actualVariants;
-          isNullable = lib.lists.any (item: (item ? type) && item.type == "null") jsonSchema.oneOf;
-          combined =
-            if 1 == lib.lists.length variants
-            then lib.head variants
-            else lib.types.oneOf variants;
-        in
-          if isNullable
-          then lib.types.nullOr combined
-          else combined;
+        type =
+          let
+            isNotNull = item: !((item ? type) && item.type == "null");
+            actualVariants = builtins.filter isNotNull jsonSchema.oneOf;
+            variants = map (item: (mapObjectDefinition rootSchema item).type) actualVariants;
+            isNullable = lib.lists.any (item: (item ? type) && item.type == "null") jsonSchema.oneOf;
+            combined = if 1 == lib.lists.length variants then lib.head variants else lib.types.oneOf variants;
+          in
+          if isNullable then lib.types.nullOr combined else combined;
       }
-    else if jsonSchema ? enum
-    then
+    else if jsonSchema ? enum then
       lib.mkOption {
         type = lib.types.enum jsonSchema.enum;
       }
-    else if jsonSchema ? type
-    then mapByType rootSchema jsonSchema
-    else if jsonSchema ? const
-    then
+    else if jsonSchema ? type then
+      mapByType rootSchema jsonSchema
+    else if jsonSchema ? const then
       # TODO: research value assertion
       lib.mkOption {
         example = jsonSchema.const;
         type = mapPrimitiveType (lib.typeOf jsonSchema.const);
       }
-    else throw "Unknown schema shape: ${lib.typeOf jsonSchema}";
+    else
+      throw "Unknown schema shape: ${lib.typeOf jsonSchema}";
 
-  jsonSchemaToOptions = jsonSchema:
-    if lib.isAttrs jsonSchema
-    then mapObjectDefinition jsonSchema jsonSchema
-    else throw "jsonSchemaToOptions expects an attrset";
-in {
+  jsonSchemaToOptions =
+    jsonSchema:
+    if lib.isAttrs jsonSchema then
+      mapObjectDefinition jsonSchema jsonSchema
+    else
+      throw "jsonSchemaToOptions expects an attrset";
+in
+{
   inherit jsonSchemaToOptions;
 }

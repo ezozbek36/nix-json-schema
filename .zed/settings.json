@@ -1,0 +1,7 @@
+{
+  "languages": {
+    "Nix": {
+      "formatter": "language_server"
+    }
+  }
+}
